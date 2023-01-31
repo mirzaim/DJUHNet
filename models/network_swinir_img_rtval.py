@@ -176,8 +176,8 @@ class VGG16Rep(nn.Module):
         
         # image preprocessing
         preprocess = torchvision.models.VGG16_Weights.DEFAULT.transforms()
-        self.mean = torch.tensor(preprocess.mean).view(1, -1, 1, 1)
-        self.std = torch.tensor(preprocess.std).view(1, -1, 1, 1)
+        self.mean = torch.nn.Parameter(torch.tensor(preprocess.mean).view(1, -1, 1, 1), requires_grad=False)
+        self.std = torch.nn.Parameter(torch.tensor(preprocess.std).view(1, -1, 1, 1), requires_grad=False)
         # ------------------------------------
         # representation learning module
         # ------------------------------------
