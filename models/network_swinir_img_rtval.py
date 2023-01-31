@@ -335,10 +335,12 @@ class SwinTransformerBlock(nn.Module):
         x = shortcut + self.drop_path(x)
         x = x + self.drop_path(self.mlp(self.norm2(x)))
 
+        shortcut = x
         x = x.transpose(1, 2).view(B, C, H, W)
         img_rep = self.dim_matcher_layer(img_rep)
         x = self.last_conv(torch.cat((x * img_rep[:, :, None, None], x), dim=1))
         x = x.flatten(2).transpose(1, 2)
+        x = shortcut + x
 
         return x
 
