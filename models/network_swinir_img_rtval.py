@@ -235,7 +235,7 @@ class SwinTransformerBlock(nn.Module):
 
     def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
-                 act_layer=nn.GELU, norm_layer=nn.LayerNorm):
+                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, rep_vec_dim=512):
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
@@ -264,7 +264,7 @@ class SwinTransformerBlock(nn.Module):
         else:
             attn_mask = None
 
-
+        self.dim_matcher_layer = nn.Linear(rep_vec_dim, dim)
         self.last_conv = nn.Sequential(
             nn.Conv2d(dim*2, dim, 1),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
@@ -335,10 +335,10 @@ class SwinTransformerBlock(nn.Module):
         x = shortcut + self.drop_path(x)
         x = x + self.drop_path(self.mlp(self.norm2(x)))
 
-        if img_rep is not None:
-            x = x.transpose(1, 2).view(B, C, H, W)
-            x = self.last_conv(torch.cat((x * img_rep[:, :, None, None], x), dim=1))
-            x = x.flatten(2).transpose(1, 2)
+        x = x.transpose(1, 2).view(B, C, H, W)
+        img_rep = self.dim_matcher_layer(img_rep)
+        x = self.last_conv(torch.cat((x * img_rep[:, :, None, None], x), dim=1))
+        x = x.flatten(2).transpose(1, 2)
 
         return x
 
@@ -432,7 +432,8 @@ class BasicLayer(nn.Module):
 
     def __init__(self, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False):
+                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False,
+                 rep_vec_dim=512):
 
         super().__init__()
         self.dim = dim
@@ -449,7 +450,8 @@ class BasicLayer(nn.Module):
                                  qkv_bias=qkv_bias, qk_scale=qk_scale,
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-                                 norm_layer=norm_layer)
+                                 norm_layer=norm_layer,
+                                 rep_vec_dim=rep_vec_dim)
             for i in range(depth)])
 
         # patch merging layer
@@ -506,7 +508,7 @@ class RSTB(nn.Module):
     def __init__(self, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False,
-                 img_size=224, patch_size=4, resi_connection='1conv'):
+                 img_size=224, patch_size=4, resi_connection='1conv', rep_vec_dim=512):
         super(RSTB, self).__init__()
 
         self.dim = dim
@@ -523,7 +525,8 @@ class RSTB(nn.Module):
                                          drop_path=drop_path,
                                          norm_layer=norm_layer,
                                          downsample=downsample,
-                                         use_checkpoint=use_checkpoint)
+                                         use_checkpoint=use_checkpoint,
+                                         rep_vec_dim=rep_vec_dim)
 
         if resi_connection == '1conv':
             self.conv = nn.Conv2d(dim, dim, 3, 1, 1)
@@ -734,10 +737,6 @@ class SwinIR(nn.Module):
         for parameter in self.rep_network.parameters():
             parameter.requires_grad = False
         self.rep_network.eval()
-        self.dim_matcher_layer = nn.Linear(
-            self.rep_network.head[-1].out_features,
-            embed_dim
-        )
 
         #####################################################################################################
         ################################### 1, shallow feature extraction ###################################
@@ -793,8 +792,8 @@ class SwinIR(nn.Module):
                          use_checkpoint=use_checkpoint,
                          img_size=img_size,
                          patch_size=patch_size,
-                         resi_connection=resi_connection
-
+                         resi_connection=resi_connection,
+                         rep_vec_dim=self.rep_network.head[-1].out_features
                          )
             self.layers.append(layer)
         self.norm = norm_layer(self.num_features)
@@ -881,7 +880,7 @@ class SwinIR(nn.Module):
         H, W = x.shape[2:]
         x = self.check_image_size(x)
 
-        img_rep = self.dim_matcher_layer(self.rep_network(x))
+        img_rep = self.rep_network(x)
 
         self.mean = self.mean.type_as(x)
         x = (x - self.mean) * self.img_range
