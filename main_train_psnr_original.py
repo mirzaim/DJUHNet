@@ -17,7 +17,6 @@ from utils.utils_dist import get_dist_info, init_dist
 
 from data.select_dataset import define_Dataset
 from models.select_model import define_Model
-from models.network_swinir import SwinIR
 
 
 '''
@@ -30,28 +29,6 @@ from models.network_swinir import SwinIR
 # https://github.com/xinntao/BasicSR
 # --------------------------------------------
 '''
-
-def load_swinir(opt, model_path, original_sf):
-    opt_net = opt['netG']
-    model = SwinIR(
-        upscale=original_sf,
-        in_chans=opt_net['in_chans'],
-        img_size=opt_net['img_size'],
-        window_size=opt_net['window_size'],
-        img_range=opt_net['img_range'],
-        depths=opt_net['depths'],
-        embed_dim=opt_net['embed_dim'],
-        num_heads=opt_net['num_heads'],
-        mlp_ratio=opt_net['mlp_ratio'],
-        upsampler=opt_net['upsampler'],
-        resi_connection=opt_net['resi_connection']
-    )
-    
-    param_key_g = 'params'
-    pretrained_model = torch.load(model_path)
-    model.load_state_dict(pretrained_model[param_key_g] if param_key_g in pretrained_model.keys() else pretrained_model, strict=True)    
-    
-    return model
 
 
 def main(json_path='options/train_msrresnet_psnr.json'):
@@ -67,11 +44,9 @@ def main(json_path='options/train_msrresnet_psnr.json'):
     parser.add_argument('--launcher', default='pytorch', help='job launcher')
     parser.add_argument('--local_rank', type=int, default=0)
     parser.add_argument('--dist', default=False)
-    parser.add_argument('--swinir_path', type=str, default='model_zoo/swinir_x4.pth')
 
     opt = option.parse(parser.parse_args().opt, is_train=True)
     opt['dist'] = parser.parse_args().dist
-    opt['swinir_path'] = parser.parse_args().swinir_path
 
     # ----------------------------------------
     # distributed settings
@@ -182,22 +157,6 @@ def main(json_path='options/train_msrresnet_psnr.json'):
     if opt['rank'] == 0:
         logger.info(model.info_network())
         logger.info(model.info_params())
-
-    # initialize layers with those of SwinIR
-    if opt['swinir_path'] and current_step == 0:
-        model_swinir = load_swinir(opt, model_path=opt['swinir_path'], original_sf=4)
-        model_g_params = dict(model.netG.named_parameters())
-        model_e_params = dict(model.netE.named_parameters())
-        swinir_params = dict(model_swinir.named_parameters())
-        
-        for k in swinir_params.keys():
-            if not k.startswith('upsample'):
-                model_g_params['module.' + k].data = swinir_params[k].data
-                model_e_params[k].data = swinir_params[k].data
-
-        model.model_to_device(model.netG)
-        model.model_to_device(model.netE)
-        logger.info('Initialized with SwinIR.')
 
     '''
     # ----------------------------------------

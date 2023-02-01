@@ -1,0 +1,9 @@
+__pycache__
+
+model_zoo/
+superresolution/
+
+trainsets/trainH/*.png
+trainsets/trainL/*.png
+testsets/validH/*.png
+testsets/validL/*.png
