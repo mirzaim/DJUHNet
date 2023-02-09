@@ -35,6 +35,9 @@ def define_Dataset(dataset_opt):
     elif dataset_type in ['sr', 'super-resolution']:
         from data.dataset_sr import DatasetSR as D
 
+    elif dataset_type in ['sr-rtvl']:
+        from data.dataset_sr_rtvl import DatasetSR_RTVL as D
+
     elif dataset_type in ['srmd']:
         from data.dataset_srmd import DatasetSRMD as D
 
