@@ -1,4 +1,4 @@
-opencv-python
+opencv-python-headless
 scikit-image
 pillow
 torchvision
@@ -8,3 +8,4 @@ lmdb
 requests
 timm
 einops
+pytorch_metric_learning
