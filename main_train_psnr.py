@@ -67,7 +67,7 @@ def main(json_path='options/train_msrresnet_psnr.json'):
     parser.add_argument('--launcher', default='pytorch', help='job launcher')
     parser.add_argument('--local_rank', type=int, default=0)
     parser.add_argument('--dist', default=False)
-    parser.add_argument('--swinir_path', type=str, default='model_zoo/swinir_x4.pth')
+    parser.add_argument('--swinir_path', type=str, default=None)
 
     opt = option.parse(parser.parse_args().opt, is_train=True)
     opt['dist'] = parser.parse_args().dist
@@ -185,7 +185,7 @@ def main(json_path='options/train_msrresnet_psnr.json'):
 
     # initialize layers with those of SwinIR
     if opt['swinir_path'] and current_step == 0:
-        model_swinir = load_swinir(opt, model_path=opt['swinir_path'], original_sf=4)
+        model_swinir = load_swinir(opt, model_path=opt['swinir_path'], original_sf=8)
         model_g_params = dict(model.netG.named_parameters())
         model_e_params = dict(model.netE.named_parameters())
         swinir_params = dict(model_swinir.named_parameters())
