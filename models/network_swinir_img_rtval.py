@@ -739,6 +739,11 @@ class SwinIR(nn.Module):
         for parameter in self.rep_network.parameters():
             parameter.requires_grad = False
         self.rep_network.eval()
+        if 'rep_vec_dim' in kwargs and kwargs['rep_vec_dim'] is not None:
+            rep_vec_dim = kwargs['rep_vec_dim']
+        else:
+            rep_vec_dim = self.rep_network.head[-1].out_features
+        self.rep_vec_list = []
 
         #####################################################################################################
         ################################### 1, shallow feature extraction ###################################
@@ -795,7 +800,7 @@ class SwinIR(nn.Module):
                          img_size=img_size,
                          patch_size=patch_size,
                          resi_connection=resi_connection,
-                         rep_vec_dim=self.rep_network.head[-1].out_features
+                         rep_vec_dim=rep_vec_dim
                          )
             self.layers.append(layer)
         self.norm = norm_layer(self.num_features)
@@ -883,6 +888,10 @@ class SwinIR(nn.Module):
         x = self.check_image_size(x)
 
         img_rep = self.rep_network(x)
+        if self.rep_vec_list:
+            img_rep = torch.cat((img_rep, *self.rep_vec_list), dim=1)
+            self.rep_vec_list = []
+        img_rep = img_rep.detach()
 
         self.mean = self.mean.type_as(x)
         x = (x - self.mean) * self.img_range

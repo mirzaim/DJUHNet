@@ -51,6 +51,7 @@
     , "mlp_ratio": 2 
     , "upsampler": "pixelshuffle"        // "pixelshuffle" | "pixelshuffledirect" | "nearest+conv" | null
     , "resi_connection": "1conv"        // "1conv" | "3conv"
+    , "rep_vec_dim": 1536                // feature modulation dim
 
     , "init_type": "default"
   }

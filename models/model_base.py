@@ -108,8 +108,8 @@ class ModelBase():
             if use_static_graph:
                 print('Using static graph. Make sure that "unused parameters" will not change during training loop.')
                 network._set_static_graph()
-        else:
-            network = DataParallel(network)
+        # else:
+        #     network = DataParallel(network)
         return network
 
     # ----------------------------------------

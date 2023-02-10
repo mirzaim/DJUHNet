@@ -194,6 +194,13 @@ def main(json_path='options/train_msrresnet_psnr.json'):
 
             if i % 2:
                 model.feed_data(train_data)
+
+                rtvl_model.eval()
+                with torch.no_grad():
+                    UL_feature, _, _ = rtvl_model(imresize(model.L.detach(), opt['scale']))
+                model.netG.rep_vec_list.append(UL_feature.detach())
+                rtvl_model.train()
+
                 model.test()
 
                 L_img, H_img, E_img, = model.L.detach(), model.H.detach(), model.E.detach()
@@ -222,6 +229,12 @@ def main(json_path='options/train_msrresnet_psnr.json'):
                 # 2) feed patch pairs
                 # -------------------------------
                 model.feed_data(train_data)
+
+                rtvl_model.eval()
+                with torch.no_grad():
+                    UL_feature, _, _ = rtvl_model(imresize(model.L.detach(), opt['scale']))
+                model.netG.rep_vec_list.append(UL_feature.detach())
+                rtvl_model.train()
 
                 # -------------------------------
                 # 3) optimize parameters

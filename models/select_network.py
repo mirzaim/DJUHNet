@@ -216,7 +216,8 @@ def define_G(opt):
                    num_heads=opt_net['num_heads'],
                    mlp_ratio=opt_net['mlp_ratio'],
                    upsampler=opt_net['upsampler'],
-                   resi_connection=opt_net['resi_connection'])
+                   resi_connection=opt_net['resi_connection'],
+                   rep_vec_dim=opt_net['rep_vec_dim'])
 
     # ----------------------------------------
     # VRT
