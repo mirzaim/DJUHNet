@@ -4,6 +4,8 @@ import argparse
 import torch
 from torch.utils.data import DataLoader
 
+from tqdm import tqdm
+
 from data.dataset_sr_rtvl import DatasetSR_RTVL
 
 from models.network_swinir_img_rtval import SwinIR as net
@@ -35,6 +37,7 @@ def main():
     dataset_opt = {
         'phase': 'test',
         'scale': args.scale,
+        'n_channels': 3,
         'H_size': 512,
         'dataroot_H': args.folder_gt,
         'dataroot_L': args.folder_lq,
@@ -42,7 +45,7 @@ def main():
     }
     dataset = DatasetSR_RTVL(dataset_opt)
     dataloader = DataLoader(dataset,
-                            batch_size=4,
+                            batch_size=1,
                             shuffle=True,
                             num_workers=2,
                             pin_memory=True)
@@ -58,20 +61,20 @@ def main():
 
     rtvl_model = FeatureExNetwork(num_classes=args.num_classes)
     rtvl_model.load_state_dict(torch.load(args.rtvl_model_path))
-    model.eval()
+    rtvl_model.eval()
     rtvl_model.to(device)
 
+    print('start testing.')
     fvs_bic, fvs_sr, labels = [], [], []
     with torch.no_grad():
-        for i, data in enumerate(dataloader):
-            y = data['img_class'].to(model.device)
+        for i, data in enumerate(tqdm(dataloader)):
+            y = data['img_class'].to(device)
+            L_img = data['L'].to(device)
 
-            model.feed_data(data)
-            UL_feature, fv_bic, _ = rtvl_model(imresize(model.L.detach(), args.scale))
-            model.netG.rep_vec_list.append(UL_feature.detach())
-            model.test()
+            UL_feature, fv_bic, _ = rtvl_model(imresize(L_img, args.scale))
+            model.rep_vec_list.append(UL_feature.detach())
+            E_img = model(L_img)
 
-            E_img = model.E.detach()
             _, fv_sr, _ = rtvl_model(E_img)
             fvs_bic.append(fv_bic), fvs_sr.append(fv_sr), labels.append(y)
     fvs_bic, fvs_sr, labels = torch.cat(fvs_bic), torch.cat(fvs_sr), torch.cat(labels)
@@ -98,7 +101,7 @@ def define_model(args):
 def get_mAP(query_fvs, index_fvs, query_label, index_label, k=5):
     l2_dist = torch.cdist(query_fvs, index_fvs)
     top_results = index_label[torch.topk(l2_dist, k=k, largest=False).indices]
-    resutls = (top_results == query_label).long()
+    resutls = (top_results == query_label[:, None]).long()
     resutls = resutls.cumsum(dim=1) / (torch.arange(resutls.shape[-1], device=resutls.get_device())+1) * resutls
     return resutls.mean().item()
 
