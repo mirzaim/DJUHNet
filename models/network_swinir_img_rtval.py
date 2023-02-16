@@ -735,7 +735,8 @@ class SwinIR(nn.Module):
 
         self.rep_network = VGG16Rep()
         # Load network parameters
-        self.rep_network.load_state_dict(torch.load('model_zoo/vgg16rep.pth'))
+        if 'rep_model_path' in kwargs and kwargs['rep_model_path'] is not None:
+            self.rep_network.load_state_dict(torch.load(kwargs['rep_model_path']))
         for parameter in self.rep_network.parameters():
             parameter.requires_grad = False
         self.rep_network.eval()

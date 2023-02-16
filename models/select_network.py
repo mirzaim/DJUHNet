@@ -217,6 +217,7 @@ def define_G(opt):
                    mlp_ratio=opt_net['mlp_ratio'],
                    upsampler=opt_net['upsampler'],
                    resi_connection=opt_net['resi_connection'],
+                   rep_model_path=opt_net['rep_model_path'],
                    rep_vec_dim=opt_net['rep_vec_dim'])
 
     # ----------------------------------------
