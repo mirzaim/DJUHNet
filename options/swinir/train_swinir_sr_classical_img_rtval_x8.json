@@ -10,27 +10,27 @@
   , "path": {
     "root": "superresolution"            // "denoising" | "superresolution" | "dejpeg"
     , "pretrained_netG": "model_zoo/base_swinir_8x.pth"      // path of pretrained model. We fine-tune X3/X4/X8 models from X2 model, so that `G_optimizer_lr` and `G_scheduler_milestones` can be halved to save time.
-    , "pretrained_netE": "model_zoo/base_swinir_8x.pth"      // path of pretrained model
+    , "pretrained_netE": null      // path of pretrained model
   }
 
   , "datasets": {
     "train": {
       "name": "train_dataset"           // just name
       , "dataset_type": "sr"         // "dncnn" | "dnpatch" | "fdncnn" | "ffdnet" | "sr" | "srmd" | "dpsr" | "plain" | "plainpatch" | "jpeg"
-      , "dataroot_H": "trainsets/trainH"// path of H training dataset. DIV2K (800 training images)
-      , "dataroot_L": "trainsets/trainL"              // path of L training dataset
+      , "dataroot_H": "trainsets/DIV2k_x8/trainH"// path of H training dataset. DIV2K (800 training images)
+      , "dataroot_L": "trainsets/DIV2k_x8/trainL"              // path of L training dataset
 
       , "H_size": 384                   // 96/144|192/384 | 128/192/256/512. LR patch size is set to 48 or 64 when compared with RCAN or RRDB.
 
       , "dataloader_shuffle": true
       , "dataloader_num_workers": 2
-      , "dataloader_batch_size": 8      // batch size 1 | 16 | 32 | 48 | 64 | 128. Total batch size =4x8=32 in SwinIR
+      , "dataloader_batch_size": 4      // batch size 1 | 16 | 32 | 48 | 64 | 128. Total batch size =4x8=32 in SwinIR
     }
     , "test": {
       "name": "test_dataset"            // just name
       , "dataset_type": "sr"         // "dncnn" | "dnpatch" | "fdncnn" | "ffdnet" | "sr" | "srmd" | "dpsr" | "plain" | "plainpatch" | "jpeg"
-      , "dataroot_H": "testsets/validH"  // path of H testing dataset
-      , "dataroot_L": "testsets/validL"              // path of L testing dataset
+      , "dataroot_H": "testsets/DIV2k_x8/validH"  // path of H testing dataset
+      , "dataroot_L": "testsets/DIV2k_x8/validL"              // path of L testing dataset
 
     }
   }
@@ -72,7 +72,7 @@
     , "G_regularizer_orthstep": null    // unused
     , "G_regularizer_clipstep": null    // unused
 
-    , "G_param_strict": true
+    , "G_param_strict": false
     , "E_param_strict": true
 
     , "checkpoint_test": 5000           // for testing
