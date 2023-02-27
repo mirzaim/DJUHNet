@@ -26,7 +26,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('inp_model', type=str)
     parser.add_argument('out_model', type=str)
-    parser.add_argument('-m', '--modulation_dim', type=int, default=1536)
+    parser.add_argument('-m', '--modulation_dim', type=int, default=1024)
     parser.add_argument('-n', '--nework_dim', type=int, default=180)
     return parser.parse_args()
 
