@@ -35,6 +35,8 @@ class DatasetSR_RTVL(data.Dataset):
         self.paths_H = util.get_image_paths(opt['dataroot_H'])
         self.paths_L = util.get_image_paths(opt['dataroot_L'])
         self.img_classes = get_img_class(opt['img_classes'])
+        if self.opt['phase'] == 'train':
+            self.img_classes = self.img_classes['train']
 
         assert self.paths_H, 'Error: H path is empty.'
         if self.paths_L and self.paths_H:
@@ -109,7 +111,7 @@ class DatasetSR_RTVL(data.Dataset):
         
         img_class = self.img_classes[Path(H_path).stem]
 
-        return {'L': img_L, 'H': img_H, 'L_path': L_path, 'H_path': H_path, 'img_class': img_class}
+        return {'L': img_L, 'H': img_H, 'L_path': L_path, 'H_path': H_path, 'img_class': img_class, 'index': index}
 
     def __len__(self):
         return len(self.paths_H)
