@@ -181,7 +181,7 @@ def main(json_path='options/train_msrresnet_psnr.json'):
     # ----------------------------------------
     '''
     gama, quantization_alpha = 1.0, 0.1
-    n_bit = 32
+    n_bit = opt['train']['n_bit']
     norm_mean = torch.tensor([0.485, 0.456, 0.406]).view(
         1, -1, 1, 1).to(model.device)
     norm_std = torch.tensor([0.229, 0.224, 0.225]).view(
