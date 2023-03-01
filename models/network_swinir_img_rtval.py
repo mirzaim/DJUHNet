@@ -235,7 +235,7 @@ class SwinTransformerBlock(nn.Module):
 
     def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
-                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, rep_vec_dim=512):
+                 act_layer=nn.GELU, norm_layer=nn.LayerNorm):
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
@@ -264,12 +264,6 @@ class SwinTransformerBlock(nn.Module):
         else:
             attn_mask = None
 
-        self.dim_matcher_layer = nn.Linear(rep_vec_dim, dim)
-        self.last_conv = nn.Sequential(
-            nn.Conv2d(dim*2, dim, 1),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True),
-            nn.Conv2d(dim, dim, 1),
-        )
         self.register_buffer("attn_mask", attn_mask)
 
     def calculate_mask(self, x_size):
@@ -295,7 +289,7 @@ class SwinTransformerBlock(nn.Module):
 
         return attn_mask
 
-    def forward(self, x, x_size, img_rep):
+    def forward(self, x, x_size):
         H, W = x_size
         B, L, C = x.shape
         # assert L == H * W, "input feature has wrong size"
@@ -334,13 +328,6 @@ class SwinTransformerBlock(nn.Module):
         # FFN
         x = shortcut + self.drop_path(x)
         x = x + self.drop_path(self.mlp(self.norm2(x)))
-
-        shortcut = x
-        x = x.transpose(1, 2).view(B, C, H, W)
-        img_rep = self.dim_matcher_layer(img_rep)
-        x = self.last_conv(torch.cat((x * img_rep[:, :, None, None], x), dim=1))
-        x = x.flatten(2).transpose(1, 2)
-        x = shortcut + x
 
         return x
 
@@ -434,8 +421,7 @@ class BasicLayer(nn.Module):
 
     def __init__(self, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False,
-                 rep_vec_dim=512):
+                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False):
 
         super().__init__()
         self.dim = dim
@@ -452,8 +438,7 @@ class BasicLayer(nn.Module):
                                  qkv_bias=qkv_bias, qk_scale=qk_scale,
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-                                 norm_layer=norm_layer,
-                                 rep_vec_dim=rep_vec_dim)
+                                 norm_layer=norm_layer)
             for i in range(depth)])
 
         # patch merging layer
@@ -462,12 +447,12 @@ class BasicLayer(nn.Module):
         else:
             self.downsample = None
 
-    def forward(self, x, x_size, img_rep):
+    def forward(self, x, x_size):
         for blk in self.blocks:
             if self.use_checkpoint:
-                x = checkpoint.checkpoint(blk, x, x_size, img_rep)
+                x = checkpoint.checkpoint(blk, x, x_size)
             else:
-                x = blk(x, x_size, img_rep)
+                x = blk(x, x_size)
         if self.downsample is not None:
             x = self.downsample(x)
         return x
@@ -527,8 +512,7 @@ class RSTB(nn.Module):
                                          drop_path=drop_path,
                                          norm_layer=norm_layer,
                                          downsample=downsample,
-                                         use_checkpoint=use_checkpoint,
-                                         rep_vec_dim=rep_vec_dim)
+                                         use_checkpoint=use_checkpoint)
 
         if resi_connection == '1conv':
             self.conv = nn.Conv2d(dim, dim, 3, 1, 1)
@@ -546,9 +530,21 @@ class RSTB(nn.Module):
         self.patch_unembed = PatchUnEmbed(
             img_size=img_size, patch_size=patch_size, in_chans=0, embed_dim=dim,
             norm_layer=None)
+        
+        self.dim_matcher_layer = nn.Linear(rep_vec_dim, dim)
+        self.pw = nn.Conv2d(dim*2, dim, 1)
+        nn.init.constant_(self.pw.weight, 0)
+        nn.init.constant_(self.pw.bias, 0)
 
     def forward(self, x, x_size, img_rep):
-        return self.patch_embed(self.conv(self.patch_unembed(self.residual_group(x, x_size, img_rep), x_size))) + x
+        x_inp = x
+        x = self.conv(self.patch_unembed(self.residual_group(x, x_size), x_size))
+        shortcut = x
+        img_rep = self.dim_matcher_layer(img_rep)
+        x = self.pw(torch.cat((x * img_rep[:, :, None, None], x), dim=1))
+        x = shortcut + x
+        return self.patch_embed(x) + x_inp
+    
 
     def flops(self):
         flops = 0
@@ -888,7 +884,8 @@ class SwinIR(nn.Module):
         H, W = x.shape[2:]
         x = self.check_image_size(x)
 
-        img_rep = self.rep_network(x)
+        with torch.no_grad():
+            img_rep = self.rep_network(x)
         if self.rep_vec_list:
             img_rep = torch.cat((img_rep, *self.rep_vec_list), dim=1)
             self.rep_vec_list = []
