@@ -206,6 +206,8 @@ def define_G(opt):
     # ----------------------------------------
     elif net_type == 'swinir_img_rtval':
         from models.network_swinir_img_rtval import SwinIR as net
+        if 'rep_model_path' not in opt_net:
+            opt_net['rep_model_path'] = None
         netG = net(upscale=opt_net['upscale'],
                    in_chans=opt_net['in_chans'],
                    img_size=opt_net['img_size'],
