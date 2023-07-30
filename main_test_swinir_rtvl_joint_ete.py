@@ -105,7 +105,7 @@ def main():
 
             fv_L = rtvl_model(
                 imresize((img_L - norm_mean) / norm_std, args.scale))
-            model.rep_vec_list.append(fv_L.detach())
+            # model.rep_vec_list.append(fv_L.detach())
             img_E = model(img_L)
 
             fv_E = rtvl_model((img_E - norm_mean) / norm_std)
