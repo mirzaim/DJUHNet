@@ -17,7 +17,8 @@ def main():
 
     for w, b in matcher_layers:
         linear = torch.nn.Linear(args.modulation_dim, args.nework_dim)
-        model_params[w], model_params[b] = linear.weight.data, linear.bias.data
+        model_params[w] = torch.zeros_like(linear.weight.data)
+        model_params[b] = torch.zeros_like(linear.bias.data)
 
     torch.save(model, args.out_model)
 
