@@ -35,7 +35,9 @@ class DatasetSR_RTVL(data.Dataset):
         self.paths_H = util.get_image_paths(opt['dataroot_H'])
         self.paths_L = util.get_image_paths(opt['dataroot_L'])
         self.img_classes = get_img_class(opt['img_classes'])
-        if self.opt['phase'] == 'train':
+        if 'dataset_fold' in self.opt:
+            self.img_classes = self.img_classes[self.opt['dataset_fold']]
+        else:
             self.img_classes = self.img_classes['train']
 
         assert self.paths_H, 'Error: H path is empty.'
