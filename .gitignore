@@ -9,6 +9,8 @@ trainsets/trainH/*.png
 trainsets/trainL/*.png
 testsets/validH/*.png
 testsets/validL/*.png
+testsets/
+trainsets/
 
 trainsets/oxbuild5k/
 
