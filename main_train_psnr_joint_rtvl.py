@@ -18,9 +18,8 @@ from utils.utils_dist import get_dist_info, init_dist
 from data.select_dataset import define_Dataset
 from models.select_model import define_Model
 
-from models.network_image_retrieval import FeatureExNetwork
+import models.network_image_retrieval as rtvl_module
 
-from pytorch_metric_learning import losses
 from bicubic_pytorch.core import imresize
 
 
@@ -34,6 +33,17 @@ from bicubic_pytorch.core import imresize
 # https://github.com/xinntao/BasicSR
 # --------------------------------------------
 '''
+
+def MultiLableContrastiveLoss(neg_margin=1):
+    def lossfn(outp, y):
+        loss = 0
+        l = (y @ y.T) > 0
+        dist = torch.cdist(outp, outp)
+        loss += 0.5 * l * dist
+        loss += 0.5 * l.logical_not() *\
+                      torch.maximum(neg_margin - dist, torch.zeros_like(dist))
+        return loss.sum()
+    return lossfn
 
 
 def main(json_path='options/train_msrresnet_psnr.json'):
@@ -126,6 +136,7 @@ def main(json_path='options/train_msrresnet_psnr.json'):
     for phase, dataset_opt in opt['datasets'].items():
         if phase == 'train':
             train_set = define_Dataset(dataset_opt)
+            # train_set, _ = torch.utils.data.random_split(train_set, [5000, len(train_set) - 5000])
             train_size = int(math.ceil(len(train_set) / dataset_opt['dataloader_batch_size']))
             train_num_classes = dataset_opt['num_classes']
             if opt['rank'] == 0:
@@ -163,31 +174,44 @@ def main(json_path='options/train_msrresnet_psnr.json'):
 
     model = define_Model(opt)
     model.init_train()
-    if opt['rank'] == 0:
-        logger.info(model.info_network())
-        logger.info(model.info_params())
+    # if opt['rank'] == 0:
+    #     logger.info(model.info_network())
+    #     logger.info(model.info_params())
 
     '''
     # ----------------------------------------
     # Step--4 (initialize model)
     # ----------------------------------------
     '''
-    alpha1, alpha2 = 0.1, 0.1
-    loss_ce = torch.nn.CrossEntropyLoss()
-    loss_mse = torch.nn.MSELoss()
-    loss_cl = losses.ContrastiveLoss(neg_margin=3)
-    rtvl_model = FeatureExNetwork(num_classes=train_num_classes)
+    gama, quantization_alpha = 1.0, 0.1
+    lam = 1.0
+    mse_alpha = 0.1
+    
+    n_bit = opt['netG']['n_bit']
+
+    norm_mean = torch.tensor([0.485, 0.456, 0.406]).view(1, -1, 1, 1).to(model.device)
+    norm_std = torch.tensor([0.229, 0.224, 0.225]).view(1, -1, 1, 1).to(model.device)
+
+    rtvl_model = rtvl_module.ResNet50(n_bit)
     rtvl_model.load_state_dict(torch.load(opt['path']['pretrained_rtvl']))
     rtvl_model.to(model.device)
-    rtvl_optimizer = torch.optim.Adam(rtvl_model.parameters(), lr=0.001)
 
+    loss_hash = rtvl_module.DPSHLoss(
+        train_num_classes, n_bit, len(train_set), model.device)
+    loss_hash2 = rtvl_module.DPSHLoss(
+        train_num_classes, n_bit, len(train_set), model.device)
+    loss_quant = rtvl_module.quantization_swdc_loss
+    loss_mse = torch.nn.MSELoss()
+    loss_cl = MultiLableContrastiveLoss(neg_margin=3)
+
+    rtvl_optimizer = torch.optim.Adam(rtvl_model.parameters(), lr=1e-5)
     '''
     # ----------------------------------------
     # Step--5 (main training)
     # ----------------------------------------
     '''
 
-    for epoch in range(1000000):  # keep running
+    for epoch in range(100):  # keep running
         if opt['dist']:
             train_sampler.set_epoch(epoch)
 
@@ -195,29 +219,43 @@ def main(json_path='options/train_msrresnet_psnr.json'):
 
             current_step += 1
 
+            if current_step > 14000:
+                return
+
             if i % 2:
                 model.feed_data(train_data)
 
+                L_img, H_img = train_data['L'].detach().to(model.device), train_data['H'].detach().to(model.device)
+                L_img = (L_img - norm_mean) / norm_std
+                H_img = (H_img - norm_mean) / norm_std
+
                 rtvl_model.eval()
                 with torch.no_grad():
-                    UL_feature, _, _ = rtvl_model(imresize(model.L.detach(), opt['scale']))
-                model.netG.rep_vec_list.append(UL_feature.detach())
+                    fv_rtvl = rtvl_model(imresize(L_img, opt['scale']))
+                model.netG.rep_vec_list.append(fv_rtvl.detach())
                 rtvl_model.train()
 
                 model.test()
 
-                L_img, H_img, E_img, = model.L.detach(), model.H.detach(), model.E.detach()
-                y = train_data['img_class'].to(model.device)
-
                 rtvl_optimizer.zero_grad()
 
-                E_feature, E_q_faeture, E_pred = rtvl_model(E_img)
-                UL_feature, UL_q_faeture, UL_pred = rtvl_model(imresize(L_img, opt['scale']))
-                H_feature, H_q_faeture, H_pred = rtvl_model(H_img)
-                    
-                loss = loss_ce(E_pred, y) + \
-                       alpha1 * loss_mse(UL_feature, H_feature) + \
-                       alpha2 * loss_cl(torch.cat((E_feature, H_feature)), torch.cat((y, y)))
+                E_img = model.E.detach()
+                E_img = (E_img - norm_mean) / norm_std
+
+                y = train_data['img_class'].to(model.device)
+                idx = train_data['index'].to(model.device)                
+
+                fv_E = rtvl_model(E_img)
+                fv_L = rtvl_model(imresize(L_img, opt['scale']))
+                fv_H = rtvl_model(H_img)
+                
+                loss = 0.0
+                loss += gama * loss_hash(fv_E, y, idx)
+                loss += quantization_alpha * loss_quant(fv_E, model.device)
+                loss += lam * loss_hash2(fv_L, y, idx)
+                loss += quantization_alpha * loss_quant(fv_L, model.device)
+                loss += mse_alpha * loss_mse(fv_L, fv_H)
+                            
                 loss.backward()
                 rtvl_optimizer.step()
 
@@ -235,8 +273,8 @@ def main(json_path='options/train_msrresnet_psnr.json'):
 
                 rtvl_model.eval()
                 with torch.no_grad():
-                    UL_feature, _, _ = rtvl_model(imresize(model.L.detach(), opt['scale']))
-                model.netG.rep_vec_list.append(UL_feature.detach())
+                    fv_rtvl = rtvl_model(imresize(model.L.detach(), opt['scale']))
+                model.netG.rep_vec_list.append(fv_rtvl.detach())
                 rtvl_model.train()
 
                 # -------------------------------

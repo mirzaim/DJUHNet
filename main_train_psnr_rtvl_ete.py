@@ -18,8 +18,7 @@ from utils.utils_dist import get_dist_info, init_dist
 from data.select_dataset import define_Dataset
 from models.select_model import define_Model
 
-from models.network_image_retrieval import ResNet50
-from models.loss_rtvl import DPSHLoss, quantization_swdc_loss
+import models.network_image_retrieval as rtvl_module
 
 from bicubic_pytorch.core import imresize
 
@@ -181,19 +180,23 @@ def main(json_path='options/train_msrresnet_psnr.json'):
     # ----------------------------------------
     '''
     gama, quantization_alpha = 1.0, 0.1
-    n_bit = opt['train']['n_bit']
-    norm_mean = torch.tensor([0.485, 0.456, 0.406]).view(
-        1, -1, 1, 1).to(model.device)
-    norm_std = torch.tensor([0.229, 0.224, 0.225]).view(
-        1, -1, 1, 1).to(model.device)
+    lam = 1.0
+    mse_alpha = 0.1
+    n_bit = 32
+    
+    norm_mean = torch.tensor([0.485, 0.456, 0.406]).view(1, -1, 1, 1).to(model.device)
+    norm_std = torch.tensor([0.229, 0.224, 0.225]).view(1, -1, 1, 1).to(model.device)
 
-    rtvl_model = ResNet50(n_bit)
+    rtvl_model = rtvl_module.ResNet50(n_bit)
     rtvl_model.load_state_dict(torch.load(opt['path']['pretrained_rtvl']))
     rtvl_model.to(model.device)
 
-    loss_hash = DPSHLoss(train_num_classes, n_bit,
-                         len(train_set), model.device)
-    loss_quant = quantization_swdc_loss
+    loss_hash = rtvl_module.DPSHLoss(
+        train_num_classes, n_bit, len(train_set), model.device)
+    loss_hash2 = rtvl_module.DPSHLoss(
+        train_num_classes, n_bit, len(train_set), model.device)
+    loss_quant = rtvl_module.quantization_swdc_loss
+    loss_mse = torch.nn.MSELoss()
 
     params = [
         {'params': rtvl_model.parameters(), 'lr': 1e-5},
@@ -216,6 +219,9 @@ def main(json_path='options/train_msrresnet_psnr.json'):
 
             current_step += 1
 
+            if current_step > 14000:
+                return
+
             # -------------------------------
             # 1) update learning rate
             # -------------------------------
@@ -224,6 +230,12 @@ def main(json_path='options/train_msrresnet_psnr.json'):
             # -------------------------------
             # 2-3) feed patch pairs
             # -------------------------------
+
+            L_img, H_img = train_data['L'].detach().to(model.device), train_data['H'].detach().to(model.device)
+            L_img = (L_img - norm_mean) / norm_std
+            H_img = (H_img - norm_mean) / norm_std
+
+
             model.feed_data(train_data)
 
             model.G_optimizer.zero_grad()
@@ -240,12 +252,18 @@ def main(json_path='options/train_msrresnet_psnr.json'):
             E_img = (E_img - norm_mean) / norm_std
 
             fv = rtvl_model(E_img)
+            fv_L = rtvl_model(imresize(L_img, opt['scale']))
+            fv_H = rtvl_model(H_img)
 
             loss += model.G_lossfn_weight * model.G_lossfn(model.E, model.H)
             model.log_dict['G_loss'] = loss.item()
 
             loss += gama * loss_hash(fv, y, idx)
             loss += quantization_alpha * loss_quant(fv, model.device)
+
+            loss += lam * loss_hash2(fv_L, y, idx)
+            loss += quantization_alpha * loss_quant(fv_L, model.device)
+            loss += mse_alpha * loss_mse(fv_L, fv_H)
 
             loss.backward()
 
@@ -279,8 +297,45 @@ def main(json_path='options/train_msrresnet_psnr.json'):
             # # -------------------------------
             # # 6) testing
             # # -------------------------------
-            if current_step % opt['train']['checkpoint_test'] == 0 and opt['rank'] == 0:
-                pass
+            # if current_step % opt['train']['checkpoint_test'] == 0 and opt['rank'] == 0:
+
+            #     avg_psnr = 0.0
+            #     idx = 0
+
+            #     for test_data in test_loader:
+            #         idx += 1
+            #         image_name_ext = os.path.basename(test_data['L_path'][0])
+            #         img_name, ext = os.path.splitext(image_name_ext)
+
+            #         img_dir = os.path.join(opt['path']['images'], img_name)
+            #         util.mkdir(img_dir)
+
+            #         model.feed_data(test_data)
+            #         model.test()
+
+            #         visuals = model.current_visuals()
+            #         E_img = util.tensor2uint(visuals['E'])
+            #         H_img = util.tensor2uint(visuals['H'])
+
+            #         # -----------------------
+            #         # save estimated image E
+            #         # -----------------------
+            #         save_img_path = os.path.join(img_dir, '{:s}_{:d}.png'.format(img_name, current_step))
+            #         util.imsave(E_img, save_img_path)
+
+            #         # -----------------------
+            #         # calculate PSNR
+            #         # -----------------------
+            #         current_psnr = util.calculate_psnr(E_img, H_img, border=border)
+
+            #         logger.info('{:->4d}--> {:>10s} | {:<4.2f}dB'.format(idx, image_name_ext, current_psnr))
+
+            #         avg_psnr += current_psnr
+
+            #     avg_psnr = avg_psnr / idx
+
+            #     # testing log
+            #     logger.info('<epoch:{:3d}, iter:{:8,d}, Average PSNR : {:<.2f}dB\n'.format(epoch, current_step, avg_psnr))
 
 
 if __name__ == '__main__':
